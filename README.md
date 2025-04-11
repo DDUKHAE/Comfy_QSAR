@@ -199,4 +199,4 @@ ComfyQSAR는 **Regression**과 **Classification** 작업을 위한 노드 그룹
 
 ## 라이선스
 
-*(프로젝트에 적용할 라이선스를 명시하세요. 예: MIT License)*
+*(Not yet created a license to apply to the project)*
