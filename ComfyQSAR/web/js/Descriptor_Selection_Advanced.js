@@ -142,11 +142,11 @@ const getSetWidgets = ['advanced', 'method', 'model'];
 // 디스크립터 선택 노드들의 타이틀 및 타입 목록
 const getSetTitles = [
     // Regression 버전
-    "Feature Selection(Regression)",
+    "Feature Selection (Regression)",
     "Feature_Selection_Regression", 
     
     // Classification 버전
-    "Feature Selection(Classification)",
+    "Feature Selection (Classification)",
     "Feature_Selection_Classification"
 ];
 

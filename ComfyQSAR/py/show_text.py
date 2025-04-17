@@ -10,7 +10,7 @@ class ShowText:
     RETURN_TYPES = ("STRING",)
     RETURN_NAMES = ("TEXT",)
     FUNCTION = "test"
-    CATEGORY = "QSAR/TEST"
+    CATEGORY = "QSAR/TEXT"
     OUTPUT_NODE = True
 
     @staticmethod

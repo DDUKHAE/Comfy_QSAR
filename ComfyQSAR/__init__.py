@@ -9,132 +9,187 @@ import sys
 import subprocess
 import time
 
-# 경로 정의
+# --- Path Definitions ---
 QSAR_PATH = os.path.dirname(os.path.realpath(__file__))
 PY_PATH = os.path.join(QSAR_PATH, "py")
-WEB_DIRECTORY = "web"
-# REQUIREMENTS_PATH = "requirements.txt"  # 이전 코드 주석 처리 또는 삭제
-REQUIREMENTS_PATH = os.path.join(QSAR_PATH, "requirements.txt") # 수정된 라인
+WEB_DIRECTORY = "web" # Note: This variable is defined but not used later for web files.
+REQUIREMENTS_PATH = os.path.join(QSAR_PATH, "requirements.txt")
 
-# 종속성 설치 함수
+# --- Dependency Management ---
 def install_dependencies():
     if not os.path.exists(REQUIREMENTS_PATH):
-        print(f"ComfyQSAR: requirements.txt 파일을 찾을 수 없습니다: {REQUIREMENTS_PATH}")
+        print(f"ComfyQSAR: requirements.txt not found at {REQUIREMENTS_PATH}")
         return False
-    
-    print("ComfyQSAR: 필요한 종속성을 설치합니다. 잠시 기다려주세요...")
+
+    print("ComfyQSAR: Installing dependencies from requirements.txt...")
     try:
-        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_PATH])
-        print("ComfyQSAR: 모든 종속성이 성공적으로 설치되었습니다.")
-        time.sleep(1)  # 설치 완료 메시지를 읽을 시간을 줍니다
+        subprocess.check_call([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_PATH],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) # Quieter install
+        print("ComfyQSAR: Dependencies installed successfully.")
+        time.sleep(1) # Give pip some time
         return True
     except subprocess.CalledProcessError as e:
-        print(f"ComfyQSAR: 종속성 설치 중 오류가 발생했습니다: {str(e)}")
+        print(f"ComfyQSAR: Error installing dependencies: {str(e)}")
+        # Attempt to provide more specific feedback if possible
+        try:
+            # Rerun with output captured to show the error
+            result = subprocess.run([sys.executable, "-m", "pip", "install", "-r", REQUIREMENTS_PATH],
+                                    capture_output=True, text=True, check=False)
+            print("--- pip install output ---")
+            print(result.stdout)
+            print(result.stderr)
+            print("--------------------------")
+        except Exception as inner_e:
+            print(f"ComfyQSAR: Could not capture pip output: {inner_e}")
+        return False
+    except FileNotFoundError:
+        print(f"ComfyQSAR: Error: '{sys.executable} -m pip' command not found. Is Python/pip installed correctly?")
         return False
 
-# 필요한 종속성 확인
-required_dependencies = [
-    "numpy", "pandas", "scikit-learn", "rdkit", "matplotlib", 
-    "seaborn", "joblib", "scipy", "padelpy", "statsmodels",
-    "xgboost", "lightgbm", "catboost"
-]
+def check_and_install_dependencies():
+    required = [
+        "numpy", "pandas", "scikit-learn", "rdkit", "matplotlib",
+        "seaborn", "joblib", "scipy", "padelpy", "statsmodels",
+        "xgboost", "lightgbm", "catboost"
+    ]
+    missing = []
+    for dep in required:
+        try:
+            importlib.import_module(dep)
+        except ImportError:
+            missing.append(dep)
 
-missing_dependencies = []
-for dependency in required_dependencies:
-    try:
-        importlib.import_module(dependency)
-    except ImportError:
-        missing_dependencies.append(dependency)
-
-# 누락된 종속성이 있으면 자동 설치
-if missing_dependencies:
-    print(f"ComfyQSAR: 필요한 종속성이 누락되었습니다: {', '.join(missing_dependencies)}")
-    print("ComfyQSAR: 자동으로 requirements.txt를 설치합니다...")
-    
-    if install_dependencies():
-        # 종속성 다시 확인
-        still_missing = []
-        for dependency in missing_dependencies:
-            try:
-                importlib.import_module(dependency)
-            except ImportError:
-                still_missing.append(dependency)
-        
-        if still_missing:
-            print(f"ComfyQSAR: 설치 후에도 누락된 종속성이 있습니다: {', '.join(still_missing)}")
-            print("ComfyQSAR: 일부 기능이 제대로 작동하지 않을 수 있습니다.")
+    if missing:
+        print(f"ComfyQSAR: Missing dependencies: {', '.join(missing)}")
+        if install_dependencies():
+            # Re-check after installation
+            still_missing = []
+            for dep in missing: # Only check those that were initially missing
+                try:
+                    # Force reload in case it was partially imported before failing
+                    importlib.invalidate_caches()
+                    importlib.import_module(dep)
+                except ImportError:
+                    still_missing.append(dep)
+            if still_missing:
+                print(f"ComfyQSAR: Failed to install some dependencies: {', '.join(still_missing)}")
+                print("ComfyQSAR: Some nodes may not work correctly. Please install manually:")
+                print(f"'{sys.executable} -m pip install -r {REQUIREMENTS_PATH}'")
+            else:
+                print("ComfyQSAR: All required dependencies are now available.")
         else:
-            print("ComfyQSAR: 모든 종속성이 정상적으로 설치되었습니다.")
+            print("ComfyQSAR: Failed to automatically install dependencies.")
+            print("ComfyQSAR: Please install manually:")
+            # Using the simpler print version
+            print("  Run: " + sys.executable + " -m pip install -r \"" + REQUIREMENTS_PATH + "\"")
     else:
-        print("ComfyQSAR: 자동 설치에 실패했습니다. 수동으로 설치해주세요:")
-        print(f"pip install -r {REQUIREMENTS_PATH}")
+        print("ComfyQSAR: All dependencies verified.")
 
-# 노드 매핑 초기화
+
+# --- Node Loading Logic ---
 NODE_CLASS_MAPPINGS = {}
 NODE_DISPLAY_NAME_MAPPINGS = {}
 
-# 파이썬 모듈 로딩
-def load_modules():
+def load_dynamic_module(module_path, spec_name):
+    """Helper function to load a module dynamically and get mappings."""
+    loaded_class_mappings = {}
+    loaded_display_mappings = {}
     try:
-        # ShowText 노드 로드
-        sys.path.append(PY_PATH)
-        from show_text import ShowText
-        NODE_CLASS_MAPPINGS["ShowText"] = ShowText
-        NODE_DISPLAY_NAME_MAPPINGS["ShowText"] = "Show Text"
-        
-        # Regression 모듈 로드
-        regression_path = os.path.join(PY_PATH, "ComfyQSAR_Regression")
-        regression_modules = [f[:-3] for f in os.listdir(regression_path) 
-                            if f.endswith(".py") and not f.startswith("__")]
-        
-        for module_name in regression_modules:
-            try:
-                module_path = os.path.join(regression_path, f"{module_name}.py")
-                spec = importlib.util.spec_from_file_location(f"ComfyQSAR_Regression.{module_name}", module_path)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                
-                if hasattr(module, "NODE_CLASS_MAPPINGS"):
-                    NODE_CLASS_MAPPINGS.update(module.NODE_CLASS_MAPPINGS)
-                if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
-                    NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
-            except Exception as e:
-                print(f"ComfyQSAR: Regression 모듈 '{module_name}' 로드 중 오류: {str(e)}")
-                traceback.print_exc()
-        
-        # Classification 모듈 로드
-        classification_path = os.path.join(PY_PATH, "ComfyQSAR_Classification")
-        classification_modules = [f[:-3] for f in os.listdir(classification_path) 
-                                if f.endswith(".py") and not f.startswith("__")]
-        
-        for module_name in classification_modules:
-            try:
-                module_path = os.path.join(classification_path, f"{module_name}.py")
-                spec = importlib.util.spec_from_file_location(f"ComfyQSAR_Classification.{module_name}", module_path)
-                module = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(module)
-                
-                if hasattr(module, "NODE_CLASS_MAPPINGS"):
-                    NODE_CLASS_MAPPINGS.update(module.NODE_CLASS_MAPPINGS)
-                if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
-                    NODE_DISPLAY_NAME_MAPPINGS.update(module.NODE_DISPLAY_NAME_MAPPINGS)
-            except Exception as e:
-                print(f"ComfyQSAR: Classification 모듈 '{module_name}' 로드 중 오류: {str(e)}")
-                traceback.print_exc()
-        
-        print(f"ComfyQSAR: {len(NODE_CLASS_MAPPINGS)} 노드가 성공적으로 로드되었습니다.")
-        return True
+        spec = importlib.util.spec_from_file_location(spec_name, module_path)
+        if spec is None or spec.loader is None:
+            print(f"ComfyQSAR: Could not create import spec for {module_path}")
+            return None, None
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec_name] = module
+        spec.loader.exec_module(module)
+
+        if hasattr(module, "NODE_CLASS_MAPPINGS"):
+            loaded_class_mappings = module.NODE_CLASS_MAPPINGS
+        if hasattr(module, "NODE_DISPLAY_NAME_MAPPINGS"):
+            loaded_display_mappings = module.NODE_DISPLAY_NAME_MAPPINGS
+        return loaded_class_mappings, loaded_display_mappings
+
+    except FileNotFoundError:
+        print(f"ComfyQSAR: Module file not found: {module_path}")
+        return None, None
     except Exception as e:
-        print(f"ComfyQSAR: 모듈 로드 중 오류 발생: {str(e)}")
+        # Simplify print statement using format()
+        print("ComfyQSAR: Error loading module '{}' from {}: {}".format(spec_name, module_path, e))
         traceback.print_exc()
+        return None, None
+
+def load_modules_from_directory(directory_path, prefix):
+    """Loads all valid Python modules from a directory."""
+    global NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+    if not os.path.isdir(directory_path):
+        # print(f"ComfyQSAR: Module directory not found: {directory_path}") # Optional: Warn if dir is missing
+        return
+
+    for filename in os.listdir(directory_path):
+        if filename.endswith(".py") and not filename.startswith("__"):
+            module_name = filename[:-3]
+            module_path = os.path.join(directory_path, filename)
+            spec_name = f"{prefix}.{module_name}" if prefix else module_name # Create a unique spec name
+
+            class_mappings, display_mappings = load_dynamic_module(module_path, spec_name)
+
+            if class_mappings is not None: # Check if loading was successful
+                NODE_CLASS_MAPPINGS.update(class_mappings)
+            if display_mappings is not None:
+                NODE_DISPLAY_NAME_MAPPINGS.update(display_mappings)
+
+def load_all_qsar_modules():
+    """Loads all modules for ComfyQSAR in a specific order."""
+    global NODE_CLASS_MAPPINGS, NODE_DISPLAY_NAME_MAPPINGS
+    NODE_CLASS_MAPPINGS = {} # Reset mappings
+    NODE_DISPLAY_NAME_MAPPINGS = {}
+
+    print("ComfyQSAR: Starting module loading...")
+    # 1. Load main node categories
+    print("ComfyQSAR: Loading Regression nodes...")
+    regression_path = os.path.join(PY_PATH, "ComfyQSAR_Regression")
+    load_modules_from_directory(regression_path, "ComfyQSAR.Regression")
+
+    print("ComfyQSAR: Loading Classification nodes...")
+    classification_path = os.path.join(PY_PATH, "ComfyQSAR_Classification")
+    load_modules_from_directory(classification_path, "ComfyQSAR.Classification")
+
+    # 2. Load Utility and other nodes
+    print("ComfyQSAR: Loading Other node(s)...")
+    
+    # Define paths to load
+    files_to_load = {
+        "Screening.py": "ComfyQSAR.Screening",
+        "show_text.py": "ComfyQSAR.show_text",
+    }
+    
+    # Try loading each file
+    for file_name, spec_name in files_to_load.items():
+        file_path = os.path.join(PY_PATH, file_name)
+        if os.path.isfile(file_path):
+            class_mappings, display_mappings = load_dynamic_module(file_path, spec_name)
+            if class_mappings is not None:
+                NODE_CLASS_MAPPINGS.update(class_mappings)
+            if display_mappings is not None:
+                NODE_DISPLAY_NAME_MAPPINGS.update(display_mappings)
+        else:
+            print(f"ComfyQSAR: {file_name} not found at {file_path}")
+
+    print(f"ComfyQSAR: Module loading complete. Found {len(NODE_CLASS_MAPPINGS)} node classes.")
+    if not NODE_CLASS_MAPPINGS:
+        print("ComfyQSAR: Warning - No node classes were loaded. Check module paths and file contents.")
         return False
+    return True
 
-# 웹 파일 복사 및 모듈 로드 실행
-print("\n=== ComfyQSAR 확장 초기화 중... ===")
-modules_loaded = load_modules()
+# --- Initialization ---
+print("\n=== ComfyQSAR Extension Initializing ===")
+check_and_install_dependencies()
+modules_loaded = load_all_qsar_modules()
 
-print(f"ComfyQSAR 초기화 완료: 모듈 로드 {'성공' if modules_loaded else '실패'}")
-print("===================================\n")
+print(f"ComfyQSAR Initialization Status: Modules Loaded - {'SUCCESS' if modules_loaded else 'FAILED'}")
+print("======================================\n")
 
-# API 노출
-__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"] 
+# --- Export Mappings ---
+# Ensure __all__ is defined only once at the end
+__all__ = ["NODE_CLASS_MAPPINGS", "NODE_DISPLAY_NAME_MAPPINGS"]
+ 

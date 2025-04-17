@@ -11,8 +11,8 @@ const TARGET_NODES = Object.freeze([
     "Load_and_Standardize_Regression",
     "Load_and_Standardize_Classification",
     //Descriptor Calculations
-    "Descriptor_calculations_Regression",
-    "Descriptor_calculations_Classification",
+    "Descriptor_Calculations_Regression",
+    "Descriptor_Calculations_Classification",
     //Descriptor Preprocessing
     "Replace_inf_with_nan_Regression",
     "Replace_inf_with_nan_Classification",
@@ -20,9 +20,13 @@ const TARGET_NODES = Object.freeze([
     "Remove_high_nan_compounds_Classification",
     "Remove_high_nan_descriptors_Regression",
     "Remove_high_nan_descriptors_Classification",
+    "Impute_missing_values_Regression",
+    "Impute_missing_values_Classification",
+    "Descriptor_preprocessing_Regression",
+    "Descriptor_preprocessing_Classification",
     //Descriptor Optimization
-    "Remove_Low_Variance_Descriptors_Regression",
-    "Remove_Low_Variance_Descriptors_Classification",
+    "Remove_Low_Variance_Features_Regression",
+    "Remove_Low_Variance_Features_Classification",
     "Remove_High_Correlation_Features_Regression",
     "Remove_High_Correlation_Features_Classification",
     "Descriptor_Optimization_Regression",

@@ -8,7 +8,17 @@ from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from sklearn.preprocessing import StandardScaler
-from .Data_Loader import create_text_container
+
+try:
+    from .Data_Loader import send_progress, create_text_container
+except ImportError:
+    print("[ComfyQSAR Descriptor Selection] Warning: Could not import progress_utils. Progress updates might not work.")
+    # 대체 함수 정의
+    def send_progress(message, progress=None, node_id=None):
+        print(f"[Progress Fallback] {message}" + (f" ({progress}%)" if progress is not None else ""))
+    # 대체 create_text_container 정의
+    def create_text_container(*lines):
+        return "\n".join(lines)
 
 class Feature_Selection_Classification:
     @classmethod
@@ -21,24 +31,24 @@ class Feature_Selection_Classification:
             },
             "optional": {
                 # Model selection and basic parameters
-                "model": (["Lasso", "RandomForest", "DecisionTree", "XGBoost", "LightGBM"],{"default": "None", "description": "Model to use with RFE or SelectFromModel methods"}),
-                "target_column": ("STRING", {"default": "Label", "description": "Target column name in the dataset"}),
-                "n_features": ("INT", {"default": 10, "min": 1, "max": 1000, "step": 1, "description": "Number of features to select"}),
-                "threshold": ("STRING", {"default": "percentile(90)", "description": "Threshold for feature selection (percentile or absolute value)"}),
+                "model": (["Lasso", "RandomForest", "DecisionTree", "XGBoost", "LightGBM"],{"default": "None"}),
+                "target_column": ("STRING", {"default": "Label"}),
+                "n_features": ("INT", {"default": 10, "min": 1, "max": 1000, "step": 1}),
+                "threshold": ("FLOAT", {"default": 0.9, "min": 0.0, "max": 1.0, "step": 0.01}),
                 
                 # Lasso related parameters
-                "alpha": ("FLOAT", {"default": 0.01, "min": 0.0001, "max": 10.0, "step": 0.001, "description": "Regularization strength for Lasso"}),
-                "max_iter": ("INT", {"default": 1000, "min": 100, "max": 10000, "step": 100, "description": "Maximum number of iterations"}),
+                "alpha": ("FLOAT", {"default": 0.01, "min": 0.0001, "max": 10.0, "step": 0.001}),
+                "max_iter": ("INT", {"default": 1000, "min": 100, "max": 10000, "step": 100}),
                 
                 # Tree-based model parameters
-                "n_estimators": ("INT", {"default": 100, "min": 10, "max": 1000, "step": 10, "description": "Number of trees in ensemble models"}),
-                "max_depth": ("INT", {"default": 5, "min": 1, "max": 50, "step": 1, "description": "Maximum depth of trees"}),
-                "min_samples_split": ("INT", {"default": 2, "min": 2, "max": 20, "step": 1, "description": "Minimum samples required to split a node"}),
-                "criterion": (["gini", "entropy"], {"description": "Function to measure quality of split"}),
-                "learning_rate": ("FLOAT", {"default": 0.1, "min": 0.001, "max": 1.0, "step": 0.01, "description": "Learning rate for boosting models"}),
+                "n_estimators": ("INT", {"default": 100, "min": 10, "max": 1000, "step": 10}),
+                "max_depth": ("INT", {"default": 5, "min": 1, "max": 50, "step": 1}),
+                "min_samples_split": ("INT", {"default": 2, "min": 2, "max": 20, "step": 1}),
+                "criterion": (["gini", "entropy"],),
+                "learning_rate": ("FLOAT", {"default": 0.1, "min": 0.001, "max": 1.0, "step": 0.01}),
                 
                 # Additional parameters
-                "n_iterations": ("INT", {"default": 100, "min": 10, "max": 1000, "step": 10, "description": "Number of iterations for stability analysis"}),
+                "n_iterations": ("INT", {"default": 100, "min": 10, "max": 1000, "step": 10}),
             }
         }
     
@@ -48,240 +58,212 @@ class Feature_Selection_Classification:
     CATEGORY = "QSAR/CLASSIFICATION/SELECTION"
     OUTPUT_NODE = True
     
-    def select_features(self, input_file, advanced, target_column="Label", method="lasso", n_features=10, threshold="percentile(90)",
+    def select_features(self, input_file, advanced, target_column="Label", method="lasso", n_features=10, threshold=0.9,
                       model=None, alpha=0.01, max_iter=1000, n_estimators=100, max_depth=5, min_samples_split=2, 
                       criterion="gini", learning_rate=0.1, n_iterations=100):
         """
         Feature selection supporting strategy-method and model-based approaches.
         """
-        os.makedirs("QSAR/Selection", exist_ok=True)
-        df = pd.read_csv(input_file)
-        
+        send_progress("🚀 Starting Feature Selection...", 0)
+
+        output_dir = "QSAR/Selection"
+        os.makedirs(output_dir, exist_ok=True)
+        send_progress(f"📂 Output directory created: {output_dir}", 5)
+
+        try:
+            send_progress(f"⏳ Loading data from: {input_file}", 10)
+            df = pd.read_csv(input_file)
+        except Exception as e:
+            error_msg = f"❌ Error loading input file: {str(e)}"
+            send_progress(error_msg)
+            return {"ui": {"text": create_text_container(error_msg)}, "result": ("",)}
+
         if target_column not in df.columns:
-            raise ValueError(f"Target column '{target_column}' not found in the dataset.")
+            error_msg = f"❌ Target column '{target_column}' not found in the dataset."
+            send_progress(error_msg)
+            return {"ui": {"text": create_text_container(error_msg)}, "result": ("",)}
 
         X_raw = df.drop(columns=[target_column])
         y = df[target_column]
 
-        # 무한값 및 NaN 처리
-        print("데이터 전처리: 무한값 및 NaN 처리 중...")
+        send_progress("⚙️ Preprocessing data (handling inf/NaN, large values)...", 15)
         X = X_raw.replace([np.inf, -np.inf], np.nan)
-        
-        # NaN 값을 중앙값으로 대체
+
+        nan_cols = []
         for col in X.columns:
             if X[col].isnull().any():
                 median_val = X[col].median()
-                if np.isnan(median_val):  # 열 전체가 NaN인 경우
-                    median_val = 0
+                if pd.isna(median_val): # Use pd.isna for better NaN checking
+                    median_val = 0 # If entire column was NaN
+                    nan_cols.append(f"{col} (filled with 0)")
+                else:
+                    nan_cols.append(f"{col} (filled with {median_val:.2f})")
                 X[col] = X[col].fillna(median_val)
-        
-        # 특수 값 처리: 매우 큰 값을 감지하고 대체
+        if nan_cols:
+            send_progress(f"   NaN values handled in columns: {', '.join(nan_cols)}", 20)
+
+        large_val_cols = []
         for col in X.columns:
-            # 매우 큰 값(예: float32 범위를 초과하는 값) 확인
-            if X[col].abs().max() > 1e30:
-                # 문제가 있는 열을 표준화하거나 값 범위 제한
-                X[col] = np.clip(X[col], -1e30, 1e30)
-                print(f"열 '{col}'에 매우 큰 값이 있어 범위를 제한했습니다.")
+            if not np.issubdtype(X[col].dtype, np.number): continue # Skip non-numeric columns
+            # Check for values exceeding a large threshold or potentially non-finite
+            if (X[col].abs() > 1e30).any() or not np.isfinite(X[col]).all():
+                 X[col] = np.nan_to_num(X[col].astype(np.float64), nan=0.0, posinf=1e30, neginf=-1e30) # Convert non-finite to finite
+                 X[col] = np.clip(X[col], -1e30, 1e30) # Clip extremes
+                 large_val_cols.append(col)
+        if large_val_cols:
+            send_progress(f"   Clipped large/non-finite values in columns: {', '.join(large_val_cols)}", 25)
 
         initial_feature_count = X.shape[1]
+        send_progress(f"🔢 Initial number of features: {initial_feature_count}", 30)
 
         model_abbr = None
-        feature_importances = None
+        selected_columns = None
+        feature_importances = None # Initialize
 
         def get_model(model_name):
-            if model_name == "random_forest":
+            if model_name == "RandomForest": # Match INPUT_TYPES casing
                 return RandomForestClassifier(n_estimators=n_estimators, max_depth=max_depth,
-                                          min_samples_split=min_samples_split, criterion=criterion), "RF"
-            elif model_name == "decision_tree":
+                                          min_samples_split=min_samples_split, criterion=criterion, random_state=42, n_jobs=-1), "RF"
+            elif model_name == "DecisionTree":
                 return DecisionTreeClassifier(max_depth=max_depth, min_samples_split=min_samples_split,
-                                          criterion=criterion), "DT"
-            elif model_name == "xgboost":
+                                          criterion=criterion, random_state=42), "DT"
+            elif model_name == "XGBoost":
                 return XGBClassifier(n_estimators=n_estimators, max_depth=max_depth,
-                                 learning_rate=learning_rate, random_state=42, eval_metric="logloss"), "XGB"
-            elif model_name == "lightgbm":
-                return LGBMClassifier(n_estimators=n_estimators, max_depth=max_depth,
-                                  learning_rate=learning_rate, random_state=42), "LGBM"
-            elif model_name == "lasso":
-                return LogisticRegression(penalty='l1', solver='saga', C=1/alpha, max_iter=max_iter, random_state=42), "LASSO"
+                                 learning_rate=learning_rate, random_state=42, eval_metric="logloss", use_label_encoder=False), "XGB" # use_label_encoder=False recommended
+            elif model_name == "LightGBM":
+                return LGBMClassifier(n_estimators=n_estimators, max_depth=max_depth if max_depth is not None and max_depth > 0 else -1, # Handle default/None for LGBM
+                                  learning_rate=learning_rate, random_state=42, n_jobs=-1), "LGBM"
+            elif model_name == "Lasso": # Match INPUT_TYPES casing
+                # Use LogisticRegression with L1 penalty for classification Lasso
+                return LogisticRegression(penalty='l1', solver='saga', C=1/alpha if alpha > 0 else 1e9, # Prevent division by zero
+                                        max_iter=max_iter, random_state=42, n_jobs=-1), "Lasso"
             else:
                 raise ValueError(f"Invalid model name '{model_name}'.")
 
+        # --- Feature Selection Logic ---
         try:
-            if method == "lasso":
-                model, model_abbr = get_model("lasso")
-                
-                # 스케일링 적용
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
-                
-                model.fit(X_scaled, y)
-                selected_columns = X.columns[model.coef_[0] != 0]
+            # Apply scaling before model fitting
+            send_progress("⚖️ Scaling features...", 35)
+            scaler = StandardScaler()
+            X_scaled = scaler.fit_transform(X)
+            send_progress("   Scaling complete.", 40)
+
+            # --- Method Implementations ---
+            if method == "Lasso":
+                model_instance, model_abbr = get_model("Lasso")
+                send_progress(f"🧬 Applying {method} (Logistic Regression with L1)...", 45)
+                model_instance.fit(X_scaled, y)
+                # Select features where coefficient is non-zero
+                importances = np.abs(model_instance.coef_[0])
+                selected_mask = importances > 1e-5 # Use a small threshold instead of exact zero
+                selected_columns = X.columns[selected_mask]
+                if len(selected_columns) == 0: # Handle case where Lasso removes all features
+                     send_progress("   Warning: Lasso removed all features. Selecting top N based on coefficient magnitude.", 75)
+                     indices = np.argsort(importances)[::-1][:min(n_features, len(importances))]
+                     selected_columns = X.columns[indices]
                 X_new = X[selected_columns]
+                send_progress(f"   {method} selection complete. {len(selected_columns)} features selected.", 80)
 
-            elif method == "rfe":
-                if model is None:
-                    raise ValueError("'rfe' method requires a model.")
-                
-                # 스케일링 적용
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
-                
-                model, model_abbr = get_model(model)
-                print(f"RFE 특성 선택 시작: 모델={model_abbr}, 선택할 특성 수={n_features}")
-                
-                try:
-                    selector = RFE(estimator=model, n_features_to_select=n_features, step=0.05)
-                    selector.fit(X_scaled, y)
-                    selected_columns = X.columns[selector.get_support()]
-                    X_new = X[selected_columns]
-                    print(f"RFE 특성 선택 완료: {len(selected_columns)}개 특성 선택됨")
-                except Exception as e:
-                    print(f"RFE 오류 발생: {e}")
-                    print("대체 전략 시도: SelectFromModel 사용")
-                    
-                    # RFE 실패 시 SelectFromModel로 대체
-                    model.fit(X_scaled, y)
-                    if hasattr(model, "feature_importances_"):
-                        feature_importances = model.feature_importances_
-                    elif hasattr(model, "coef_"):
-                        feature_importances = np.abs(model.coef_[0])
-                    
-                    # 특성 중요도를 기준으로 상위 n_features 선택
-                    threshold = np.sort(feature_importances)[-min(n_features, len(feature_importances))]
-                    selector = SelectFromModel(estimator=model, threshold=threshold, prefit=True)
-                    selected_columns = X.columns[selector.get_support()]
-                    X_new = X[selected_columns]
-                    print(f"대체 전략 완료: {len(selected_columns)}개 특성 선택됨")
-
-            elif method == "select_from_model":
-                if model is None:
-                    raise ValueError("'select_from_model' method requires a model.")
-                
-                # 스케일링 적용
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
-                
-                model, model_abbr = get_model(model)
-                model.fit(X_scaled, y)
-
-                if hasattr(model, "feature_importances_"):
-                    feature_importances = model.feature_importances_
-                elif hasattr(model, "coef_"):
-                    feature_importances = np.abs(model.coef_[0])
-                else:
-                    raise ValueError(f"The model {model} does not provide feature importances.")
-
-                if isinstance(threshold, str) and "percentile" in threshold:
-                    percentile_value = int(threshold.replace("percentile(", "").replace(")", ""))
-                    threshold = np.percentile(feature_importances, percentile_value)
-
-                selector = SelectFromModel(estimator=model, threshold=threshold, prefit=True)
+            elif method == "RFE":
+                if model is None or model == "None": # Check for None string as well
+                    raise ValueError("'RFE' method requires a model selection.")
+                model_instance, model_abbr = get_model(model)
+                send_progress(f"🧬 Applying {method} with {model_abbr} (target: {n_features} features)...", 45)
+                selector = RFE(estimator=model_instance, n_features_to_select=n_features, step=0.1) # step=0.1 for faster removal
+                selector.fit(X_scaled, y)
                 selected_columns = X.columns[selector.get_support()]
                 X_new = X[selected_columns]
+                send_progress(f"   {method} selection complete. {len(selected_columns)} features selected.", 80)
 
-            elif method in ["random_forest", "decision_tree"]:
-                feature_importance_matrix = np.zeros((n_iterations, X.shape[1]))
+            elif method == "SelectFromModel":
+                if model is None or model == "None":
+                    raise ValueError("'SelectFromModel' method requires a model selection.")
+                model_instance, model_abbr = get_model(model)
+                send_progress(f"🧬 Applying {method} with {model_abbr}...", 45)
+                model_instance.fit(X_scaled, y)
 
-                # 스케일링 적용
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
-
-                for i in range(n_iterations):
-                    model_iter, model_abbr = get_model(method)
-                    model_iter.fit(X_scaled, y)
-                    feature_importance_matrix[i] = model_iter.feature_importances_
-
-                feature_importances = np.mean(feature_importance_matrix, axis=0)
-
-                if isinstance(threshold, str) and "percentile" in threshold:
-                    percentile_value = int(threshold.replace("percentile(", "").replace(")", ""))
-                    threshold = np.percentile(feature_importances, percentile_value)
+                # Get feature importances or coefficients
+                if hasattr(model_instance, "feature_importances_"):
+                    importances = model_instance.feature_importances_
+                elif hasattr(model_instance, "coef_"):
+                    importances = np.abs(model_instance.coef_[0])
                 else:
-                    threshold = float(threshold)
+                    raise ValueError(f"Model {model_abbr} does not provide feature importances or coefficients.")
 
-                important_indices = np.where(feature_importances >= threshold)[0]
-                selected_columns = X.columns[important_indices]
+                # Determine threshold dynamically based on n_features if threshold is not set or invalid
+                current_threshold = threshold
+                if not isinstance(threshold, (int, float)) or threshold <= 0 or threshold > 1 : # Adjust threshold logic if needed
+                     # If invalid threshold, use n_features to determine threshold
+                     if n_features > 0 and n_features < len(importances):
+                           sorted_importances = np.sort(importances)[::-1] # Sort descending
+                           current_threshold = sorted_importances[n_features -1] # Threshold is the importance of the Nth feature
+                           send_progress(f"   Using importance threshold based on n_features: {current_threshold:.4f}", 65)
+                     else: # Default to median if n_features is also invalid
+                           current_threshold = "median"
+                           send_progress(f"   Using median importance threshold.", 65)
+
+                selector = SelectFromModel(estimator=model_instance, threshold=current_threshold, prefit=True, max_features=n_features if threshold <=0 else None)
+                selected_columns = X.columns[selector.get_support()]
                 X_new = X[selected_columns]
+                send_progress(f"   {method} selection complete. {len(selected_columns)} features selected.", 80)
 
-            elif method in ["xgboost", "lightgbm"]:
-                # 스케일링 적용
-                scaler = StandardScaler()
-                X_scaled = scaler.fit_transform(X)
-                
-                model, model_abbr = get_model(method)
-                model.fit(X_scaled, y)
-                feature_importances = model.feature_importances_
 
-                if isinstance(threshold, str) and "percentile" in threshold:
-                    percentile_value = int(threshold.replace("percentile(", "").replace(")", ""))
-                    threshold = np.percentile(feature_importances, percentile_value)
-                else:
-                    threshold = float(threshold)
+            elif method in ["RandomForest", "DecisionTree", "XGBoost", "LightGBM"]: # Model itself provides importances
+                 model_instance, model_abbr = get_model(method)
+                 send_progress(f"🧬 Calculating feature importances using {model_abbr}...", 45)
+                 model_instance.fit(X_scaled, y)
+                 importances = model_instance.feature_importances_
+                 send_progress("   Feature importances calculated.", 65)
 
-                important_indices = np.where(feature_importances >= threshold)[0]
-                selected_columns = X.columns[important_indices]
-                X_new = X[selected_columns]
+                 # Select top N features based on importance
+                 indices = np.argsort(importances)[::-1][:min(n_features, len(importances))] # Ensure n_features is not too large
+                 selected_columns = X.columns[indices]
+                 X_new = X[selected_columns]
+                 send_progress(f"   Selected top {len(selected_columns)} features based on importance.", 80)
 
             else:
                 raise ValueError(f"Unsupported method '{method}'")
 
+            # --- Post-selection ---
+            final_feature_count = X_new.shape[1]
+            if final_feature_count == 0:
+                send_progress("⚠️ Warning: No features were selected. Returning original features.", 85)
+                X_new = X # Return original if none selected
+                selected_columns = X.columns
+                final_feature_count = initial_feature_count
+
+            # Combine selected features with the target column
+            final_df = pd.concat([y, X_new], axis=1)
+
+            # Save the result
+            output_filename = f"selected_{method}_{model_abbr if model_abbr else 'features'}.csv"
+            output_path = os.path.join(output_dir, output_filename)
+            send_progress(f"💾 Saving selected features to: {output_path}", 90)
+            final_df.to_csv(output_path, index=False)
+            send_progress("   Saving complete.", 95)
+
+            # Prepare result text
+            result_text = create_text_container(
+                f"🔹 **Feature Selection Done!** 🔹",
+                f"Method: {method}" + (f" with {model_abbr}" if model_abbr else ""),
+                f"Initial Features: {initial_feature_count}",
+                f"Selected Features: {final_feature_count}",
+                f"Output File: {output_path}"
+            )
+            send_progress("🎉 Feature selection finished successfully!", 100)
+            return {"ui": {"text": result_text}, "result": (output_path,)}
+
         except Exception as e:
-            error_msg = f"특성 선택 중 오류 발생: {str(e)}"
-            print(error_msg)
-            
-            # 오류 발생 시 간단한 전략으로 대체
-            print("오류로 인해 기본 상관관계 기반 특성 선택으로 대체합니다.")
-            
-            # 타겟과의 상관관계 계산
-            correlations = []
-            for col in X.columns:
-                try:
-                    corr = abs(X[col].corr(pd.Series(y)))
-                    if np.isnan(corr):
-                        corr = 0
-                    correlations.append((col, corr))
-                except:
-                    correlations.append((col, 0))
-            
-            # 상관관계 기준 정렬
-            correlations.sort(key=lambda x: x[1], reverse=True)
-            
-            # 상위 n_features 선택
-            selected_columns = [item[0] for item in correlations[:min(n_features, len(correlations))]]
-            X_new = X[selected_columns]
-            model_abbr = "CORR"
-            
-            print(f"상관관계 기반 선택 완료: {len(selected_columns)}개 특성 선택됨")
-            
-        # 결과 생성
-        final_feature_count = len(selected_columns)
-        removed_features = initial_feature_count - final_feature_count
+            error_msg = f"❌ Feature Selection Failed!\nMethod: {method}\nError: {str(e)}"
+            import traceback
+            error_msg += f"\nTraceback:\n{traceback.format_exc()}"
+            send_progress(error_msg) # Send error without progress
+            return {"ui": {"text": create_text_container(error_msg)}, "result": ("",)}
 
-        selected_features = X_new.copy()
-        selected_features["Label"] = y.reset_index(drop=True)
-
-        filename = f"features_{method}_{model_abbr}_{initial_feature_count}_{final_feature_count}.csv"
-        output_file = os.path.join("QSAR/Selection", filename)
-        selected_features.to_csv(output_file, index=False)
-
-        text_container = create_text_container(
-            "🔹 Feature Selection Completed! 🔹",
-            f"📌 Method: {method} ({model_abbr})",
-            f"📊 Initial Features: {initial_feature_count}",
-            f"📉 Selected Features: {final_feature_count}",
-            f"🗑️ Removed: {removed_features}",
-        )
-
-        return {
-            "ui": {"text": text_container},
-            "result": (str(output_file),)
-        }
-
-# 노드 등록
+# Node registration
 NODE_CLASS_MAPPINGS = {
     "Feature_Selection_Classification": Feature_Selection_Classification
 }
-
 NODE_DISPLAY_NAME_MAPPINGS = {
-    "Feature_Selection_Classification": "Feature Selection(Classification)"
+    "Feature_Selection_Classification": "Feature Selection (Classification)"
 } 

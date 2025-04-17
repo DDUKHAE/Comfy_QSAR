@@ -93,8 +93,9 @@ function widgetLogic(node, widget) {
             // ElasticNet 관련 위젯
             toggleWidgets(['alpha', 'l1_ratio'],
                 isAdvanced && algorithmValue === "elasticnet");
-            
-            // Linear Regression은 특별한 파라미터가 없음
+            // logistic regression 관련 위젯
+            toggleWidgets(['penalty', 'C', 'solver', 'max_iter'],
+                isAdvanced && algorithmValue === "logistic");
             break;
         }
     }
