@@ -22,27 +22,11 @@ pip install -r requirements.txt
 
 ComfyQSAR는 **Regression**과 **Classification** 작업을 위한 노드 그룹을 제공합니다. 각 노드는 QSAR 모델링 파이프라인의 특정 단계를 수행합니다. 노드들을 순서대로 연결하여 데이터 준비부터 모델 평가까지 전체 과정을 시각적으로 구성할 수 있습니다.
 
-### 공통 노드
-
-*   **Show Text (`ShowText`)**:
-    *   **사용 시나리오:** 다른 노드에서 생성된 텍스트 정보(예: 데이터 로드 결과, 모델 평가 지표 요약)를 ComfyUI 화면에서 직접 확인하고 싶을 때 사용합니다. 워크플로우 중간중간 결과를 확인하거나 디버깅할 때 유용합니다.
-    *   **사용법:** 텍스트 출력이 있는 노드의 `text` 출력을 이 노드의 `text` 입력에 연결합니다.
-
-### ComfyQSAR Regression 노드 (QSAR/REGRESSION)
-
-연속적인 값(예: 약물의 효능 수치, 분자의 물리화학적 속성)을 예측하는 Regression 모델링 파이프라인을 구성할 때 사용합니다.
-
 #### LOAD & STANDARDIZATION (데이터 로딩 및 표준화)
-
-*   **Data Loader (Regression) (`Data_Loader_Regression`)**:
-    *   **사용 시나리오:** QSAR 모델링을 시작할 때, 분자 구조 정보(SMILES)와 해당 분자의 실험값(활성도, 속성값 등)이 별도의 파일(.tsv, .csv 등)에 저장되어 있는 경우 사용합니다. 두 파일을 읽어 하나의 데이터셋으로 통합합니다.
-    *   **사용법:** SMILES 파일 경로와 활성값 파일 경로를 각각 입력으로 지정합니다. 노드는 두 데이터를 합친 CSV 파일의 경로를 출력합니다.
-*   **Standardization (Regression) (`Standardization_Regression`)**:
-    *   **사용 시나리오:** 로드된 분자 데이터를 모델링에 적합하도록 정제할 때 사용합니다. RDKit 라이브러리를 이용해 화학적으로 유효하지 않거나 모델링에 부적합한 구조(예: 염 제거 실패, 다중 성분 등)를 필터링합니다.
-    *   **사용법:** `Data Loader` 또는 다른 노드에서 출력된 CSV 파일 경로를 입력으로 받습니다. 표준화 및 필터링된 분자 데이터가 포함된 새 CSV 파일 경로를 출력합니다.
-*   **Load and Standardize (Regression) (`Load_and_Standardize_Regression`)**:
-    *   **사용 시나리오:** SMILES/활성값 파일 로딩과 분자 표준화/필터링을 한 번에 처리하고 싶을 때 사용합니다. 위 두 노드(`Data Loader`, `Standardization`)를 순차적으로 사용하는 것과 동일한 작업을 수행합니다.
-    *   **사용법:** SMILES 파일 경로와 활성값 파일 경로를 입력으로 지정합니다. 로드, 병합, 표준화, 필터링이 완료된 데이터의 CSV 파일 경로를 출력합니다.
+Accepts structure data file (SDF) and Comma-Separated Values (CSV) formats, including the Simplified Molecular Input Line Entry System (SMILES). Performs molecule normalization, removes artifacts, standardizes tautomers, and stereochemistry.
+*   **Load & Standardize:**
+*   Load and standardize the data to be used for QSAR modeling. 
+*   **
 
 #### CALCULATION (기술자 계산)
 
