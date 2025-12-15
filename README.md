@@ -1,33 +1,22 @@
 # ComfyQSAR
 
-ComfyQSAR는 [ComfyUI](https://github.com/comfyanonymous/ComfyUI) 환경에서 정량적 구조-활성 관계(Quantitative Structure-Activity Relationship, QSAR) 모델링을 수행하기 위한 커스텀 노드 확장입니다. 화학 구조 데이터로부터 분자 기술자를 계산하고, 데이터를 전처리하며, 머신러닝 모델을 훈련, 평가, 최적화하는 워크플로우를 ComfyUI의 시각적 인터페이스 내에서 구축할 수 있습니다.
+ComfyQSAR is a custom node extension for performing quantitative structure-activity relationship (QSAR) modeling within the [ComfyUI](https://github.com/comfyanonymous/ComfyUI) environment. It enables you to build workflows within ComfyUI's visual interface to compute molecular descriptors from chemical structure data, preprocess data, and train, evaluate, and optimize machine learning models.
 
-## 기능
+## Get Started
 
-*   **모듈식 워크플로우:** 데이터 로딩, 기술자 계산, 전처리, 모델 훈련, 하이퍼파라미터 튜닝 등 QSAR 모델링의 각 단계를 개별 노드로 제공하여 유연한 워크플로우 구성이 가능합니다.
-*   **다양한 머신러닝 모델 지원:** Regression 및 Classification 작업 모두에 대해 다양한 알고리즘(예: XGBoost, LightGBM, RandomForest, SVM, Linear Models 등)을 지원합니다.
-*   **자동 종속성 관리:** 필요한 파이썬 라이브러리를 자동으로 감지하고 설치를 시도합니다. (`requirements.txt`)
-*   **ComfyUI 통합:** ComfyUI의 노드 기반 인터페이스를 활용하여 직관적인 모델링 파이프라인 구축 및 실행이 가능합니다.
-
-## 설치
-
-1.  **ComfyUI 설치:** 아직 ComfyUI를 설치하지 않았다면, [ComfyUI GitHub 리포지토리](https://github.com/comfyanonymous/ComfyUI)의 지침에 따라 설치합니다.
-2.  **ComfyQSAR 다운로드:**
-    *   이 리포지토리를 ComfyUI의 `custom_nodes` 디렉토리 안에 클론합니다.
-        ```bash
-        cd ComfyUI/custom_nodes/
-        git clone <ComfyQSAR 리포지토리 주소> ComfyQSAR
-        ```
-    *   또는, 리포지토리의 zip 파일을 다운로드하고 압축을 해제하여 `ComfyQSAR` 폴더를 `ComfyUI/custom_nodes/` 디렉토리 안에 위치시킵니다.
-3.  **종속성 설치:**
-    *   ComfyUI를 시작합니다. ComfyQSAR가 처음 로드될 때 필요한 파이썬 라이브러리(`requirements.txt` 파일 기준)를 자동으로 확인하고 설치를 시도합니다.
-    *   자동 설치에 실패할 경우, 터미널에서 다음 명령어를 직접 실행하여 수동으로 설치할 수 있습니다:
-        ```bash
-        # ComfyUI 가상환경 활성화 (필요한 경우)
-        cd ComfyUI/custom_nodes/ComfyQSAR/
-        pip install -r requirements.txt
-        ```
-4.  **ComfyUI 재시작:** 종속성 설치 후 ComfyUI를 재시작합니다.
+1.  **Install ComfyUI:**
+*   If you haven't already installed the ComplyUI, follow the instructions in the [ComfyUI GitHub Repository] (https://github.com/comfyanonymous/ComfyUI).
+2.  **Download ComfyQSAR:**
+*   Download the current uploaded ComplyQSAR folder on GitHub and place the 'ComfyQSAR' folder in the 'ComfyUI/custom_nodes/' directory.
+3.  **Install Dependency:**
+* Start the ComplyUI, which automatically checks the Python library (based on the 'requirements.txt' file) required when the ComplyQSAR is first loaded and attempts to install it.
+* If the automatic installation fails, you can run the following commands directly from the terminal to install them manually:
+```bash
+# Activating the ComplyUI Virtual Environment (if required)
+cd ComfyUI/custom_nodes/ComfyQSAR/
+pip install -r requirements.txt
+```
+4.  **ComfyUI Restart:** Restart the ComfyUI after the dependency installation.
 
 ## 노드 설명
 
