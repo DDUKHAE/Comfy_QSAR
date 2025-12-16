@@ -19,7 +19,7 @@ ComfyQSAR treats data analysis as a visual flow. You can inspect the state of yo
 1.  Navigate to the `custom_nodes` directory within your ComfyUI installation.
 2.  Run the following command:
     ```bash
-    git clone https://github.com/YourUsername/ComfyQSAR.git
+    git clone https://github.com/DDUKHAE/Comfy_QSAR.git
     ```
     This will create a new subdirectory `ComfyQSAR`.
 3.  **Install Dependencies**:
@@ -68,7 +68,6 @@ For predicting categories (e.g., Active/Inactive, Toxic/Non-toxic).
 *   **Validation**:
     *   `Model Validation`: Evaluate classification performance.
 ## Contribution
-Based on [ComfyUI-Data-Analysis](https://github.com/HowToSD/ComfyUI-Data-Analysis).
 If you have feature requests or find bugs, please create an Issue.
 ## License
 MIT License
