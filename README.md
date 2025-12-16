@@ -12,7 +12,7 @@
 *   **Model Validation**: Evaluate model performance with detailed metrics (R², MSE, Accuracy, F1-Score, ROC-AUC) and visualizations.
 ## Visualization & Analysis
 ComfyQSAR treats data analysis as a visual flow. You can inspect the state of your data at any point, visualize model performance, and iteratively improve your models.
-![Workflow Example](images/workflow_example.png)
+![Workflow Example](ComfyQSAR_Classification_workflow_Example.png)
 *Example of a QSAR workflow*
 ## Installation
 ### Installation via git
